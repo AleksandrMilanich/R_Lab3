@@ -1,0 +1,144 @@
+---
+title: "Report_lab3"
+author: "Milanich Alexander"
+date: "2023-01-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Задание 3
+Используйте файл trades.RData 
+Объедините таблицы в одну, уберите столбец с территорией торговли, т.к. там только Евросоюз, оставим только строки с экспортом и импортом, вынесете данные по экспорту и импорту в отдельные переменные. Постройте линейный график изменения экспорта по годам просуммировав разные группы экспортируемых товаров. Подпишите значения на графике. Для минимального значения сделайте подпись красным цветом. Отрегулируйте местоположение подписей так, чтобы рисунок был максимально наглядным. Придумайте новые названия графика и осей.
+
+
+Подключаем нужные модули, считываем данные, убираем ненужный столбец
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+data <- get(load('trades.Rdata'))
+data <- bind_rows(data)[ , -3]
+data <- data[str_detect(data$indic_et, "Imports in|Exports in"), ]
+```
+
+
+Выносим данные по экспорту и импорту
+```{r}
+wideData <- pivot_wider(data, names_from = indic_et, values_from = values)
+```
+
+
+Суммируем экспорт и импорт разных групп товаров, готовим данные для построения графика 
+Выводим таблицу с расчитанными данными
+```{r}
+coupledData <- aggregate(wideData[[4]], list(wideData$time), sum)
+names(coupledData) <- c("Time", "Sum.Exp")
+print(coupledData)
+```
+
+Выделим координаты ячейки с минимальным экспортом
+```{r}
+minIndex <- which(coupledData == min(coupledData[["Sum.Exp"]]), arr.ind = TRUE)
+aes2 <- coupledData[-minIndex, ]
+```
+
+Строим график
+```{r}
+ggplot(coupledData, aes(x = Time, y = Sum.Exp)) + geom_line() + geom_point() +
+      geom_text(data = aes2, aes(x = Time, y = Sum.Exp, label = Sum.Exp),
+      vjust = 0, hjust=1, nudge_x = 100, nudge_y = 35000, size = 3) +
+  
+      geom_point(data = coupledData, aes(x = coupledData[minIndex[1,1], minIndex[1,2] - 1],
+      y = coupledData[minIndex[1,1], minIndex[1,2]]), size = 5, shape = "o", color = "red") +
+  
+      geom_text(data = coupledData[minIndex[1,1], ], aes(x = Time, y = Sum.Exp, label = Sum.Exp),
+      color = "red", size = 3.5, vjust = 0, hjust = 1, nudge_x = 150, nudge_y = -35000, check_overlap = TRUE) +
+  
+      labs(title = "Dependence of exports on the year", x = "Years", y = "Total exports, million of ECU/EURO")
+```
+
+### Задание 8
+
+Используйте файл ExpImp.Rdata
+Приведите данные к формату tidydata. Отобразите значения суммарного экспорта и импорта металлургической промышленности по регионам в виде столбчатой диаграммы [сгруппировав значения по названию региона]. Подпишите группы товаров, экспорт и импорт обозначьте разными цветами. Сделайте второй график, на котором значения экспорта и импорта расположите по разные стороны относительно оси x. Подпишите значения экспорта и импорта и долю, которую экспорт и импорт металлургической промышленности сотавляет в суммарном импорте и экспорте по регионам.
+
+
+Подключаем нужные модули, считываем данные, убираем ненужные строки
+Оставляем столбцы с данными о металлургии
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+load(file='ExpImp.RData')
+
+data <- filter(ExpImp, !str_detect(ExpImp$Регион, 'Федерация|федеральный округ|в том числе'))
+
+for (col_name in colnames(data)[colnames(data) != "Регион"]) {
+  data[[col_name]] <- as.numeric(gsub("-", NA, data[[col_name]]))
+}
+
+dataMet <- select(data, c("Регион", "МетЭкспорт", "МетИмпорт"))
+```
+
+
+Просуммируем объемы экспорта и импорта, удаляем ненужные строчки
+Создадим и выведем таблицу для графика
+```{r}
+fullExport <- select_at(data, vars(matches("Экспорт")))
+fullImport <- select_at(data, vars(matches("Импорт")))
+
+dataMet$СуммарныйЭкспорт <- rowSums(fullExport, na.rm = TRUE)
+dataMet$СуммарныйИмпорт <- rowSums(fullImport, na.rm = TRUE)
+
+dataMet <- dataMet[complete.cases(dataMet),]
+coupledData <- select(dataMet, -c("МетЭкспорт", "МетИмпорт"))
+dataMet <- select(dataMet, c("Регион", "МетЭкспорт", "МетИмпорт"))
+print(dataMet)
+```
+
+Строим графики
+Наклоняем гистограммы в горизонтальное положение, чтобы были видны подписи на оси
+
+Первый график:
+```{r, fig.width=15,fig.height=20}
+plotData <- pivot_longer(dataMet, !Регион, names_to = "Показатель", values_to = "Значение")
+ggplot(data = plotData, mapping = aes(x = Регион, y = Значение, fill = Показатель)) +
+  geom_col(color = 'black', position = 'dodge') +
+  
+  scale_fill_manual(labels = c("Импорт", "Экспорт"), values = c("blue", "red")) +
+  
+  ggtitle("Экспорт и импорт металлургической промышленности") +
+  
+  ylab('Объем, млн долл. США') + theme(legend.position='top') +
+  coord_flip()
+```
+
+Второй график:
+```{r, fig.width=15,fig.height=20}
+dataMet[,"МетЭкспорт"] <- -dataMet[,"МетЭкспорт"]
+
+plotData <- pivot_longer(dataMet, !Регион, names_to = "Показатель", values_to = "Значение")
+ggplot(data = plotData, mapping = aes(x = Регион, y = Значение, fill = Показатель)) +
+  geom_col(color = 'black', position = 'dodge') +
+  
+  scale_fill_manual(labels = c("Импорт", "Экспорт"), values = c("blue", "red")) +
+  
+  geom_text(data = plotData[plotData$Показатель == "МетЭкспорт",], aes(x = Регион, y = Значение, 
+        label = paste(-Значение, " (", round(-Значение / coupledData$СуммарныйЭкспорт * 100, digits = 1), "%)", sep = "")), size = 4,
+        hjust = 1, nudge_y = -50, nudge_x = 0.2, color = "dark red") +
+  
+  geom_text(data = plotData[plotData$Показатель == "МетИмпорт",], aes(x = Регион, y = Значение, 
+        label = paste(Значение, " (", round(Значение / coupledData$СуммарныйИмпорт * 100, digits = 1), "%)", sep = "")), size = 4, 
+        hjust = 0, nudge_y = 50, nudge_x = -0.2, color = "dark blue") +
+  
+  coord_flip(ylim = c(-6500, 7500)) +
+  
+  ggtitle("Экспорт и импорт металлургической промышленности") +
+  
+  ylab('Объем, млн долл. США') + theme(legend.position='top') +
+  
+  theme(plot.caption = element_text(hjust = 0))
+```
